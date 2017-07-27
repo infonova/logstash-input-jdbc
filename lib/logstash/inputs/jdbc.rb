@@ -186,6 +186,9 @@ class LogStash::Inputs::Jdbc < LogStash::Inputs::Base
   # encoded. Specific columns charsets using :columns_charset can override this setting.
   config :charset, :validate => :string
 
+  # Yield an event in case of an error (e.g. database down)
+  config :event_on_error, :validate => :boolean, :default => false
+
   # The character encoding for specific columns. This option will override the `:charset` option 
   # for the specified columns.
   #
@@ -301,12 +304,20 @@ class LogStash::Inputs::Jdbc < LogStash::Inputs::Base
   def execute_query(queue, statement)
     # update default parameters
     @parameters['sql_last_value'] = @sql_last_value
-    execute_statement(statement, @parameters) do |row|
+    is_success = execute_statement(statement, @parameters) do |row|
       if enable_encoding?
         ## do the necessary conversions to string elements
         row = Hash[row.map { |k, v| [k.to_s, convert(k, v)] }]
       end
       event = LogStash::Event.new(row)
+      decorate(event)
+      queue << event
+    end
+
+    if !is_success && @event_on_error
+      event = LogStash::Event.new 
+      event.tag("_jdbc_failure")
+      event.set("error", @error)
       decorate(event)
       queue << event
     end

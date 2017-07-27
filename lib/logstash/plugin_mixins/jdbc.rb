@@ -242,9 +242,13 @@ module LogStash::PluginMixins::Jdbc
       success = true
     rescue Sequel::DatabaseConnectionError, Sequel::DatabaseError => e
       @logger.warn("Exception when executing JDBC query", :exception => e)
-      @logger.warn("Attempt reconnection.")
       close_jdbc_connection()
-      open_jdbc_connection()
+      if @event_on_error
+        @error = e.message
+      else
+        @logger.warn("Attempt reconnection.")
+        open_jdbc_connection()
+      end
     else
       @sql_last_value = sql_last_value
     end
